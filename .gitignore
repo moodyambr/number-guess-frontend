@@ -1,0 +1,12 @@
+.idea/
+.vscode/
+.DS_Store
+*.log
+.env
+*.md
+
+# Playwright / node
+node_modules/
+playwright-report/
+test-results/
+e2e/node_modules/
