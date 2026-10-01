@@ -1,7 +1,3 @@
-# Används endast av GitHub Actions (test.yml) för att köra E2E-testerna
-# mot en riktig, isolerad miljö. Backend hämtas som färdig image från
-# Docker Hub (samma image som faktiskt deployas); frontend byggs från
-# detta repo.
 services:
   mysql:
     image: mysql:8.0
