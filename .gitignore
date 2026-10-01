@@ -4,9 +4,10 @@
 *.log
 .env
 *.md
-
+pdf/
 # Playwright / node
 node_modules/
 playwright-report/
 test-results/
 e2e/node_modules/
+target/
