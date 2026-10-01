@@ -10,8 +10,7 @@ jobs:
   build-image:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout kod
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
       - name: Bygg Docker-image (verifierar att Dockerfile fungerar)
         run: docker build -t number-guess-frontend:ci .
@@ -21,14 +20,9 @@ jobs:
           docker run -d --rm -p 8081:8081 -e PORT=8081 \
             -e API_BASE_URL=http://localhost:8080 \
             --name frontend-ci number-guess-frontend:ci
-          for attempt in {1..10}; do
-            if curl -sf http://localhost:8081/ > /dev/null; then
-              break
-            fi
-            if [ "$attempt" -eq 10 ]; then
-              docker logs frontend-ci
-              exit 1
-            fi
+          for i in {1..10}; do
+            curl -sf http://localhost:8081/ > /dev/null && exit 0
+            [ "$i" = "10" ] && docker logs frontend-ci && exit 1
             sleep 1
           done
           docker stop frontend-ci
@@ -37,91 +31,31 @@ jobs:
     needs: build-image
     runs-on: ubuntu-latest
     env:
-      # backend-imagens tagg speglar vilken branch som testas
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       BACKEND_TAG: ${{ github.ref_name == 'main' && 'main' || 'dev' }}
     steps:
-      - name: Checkout kod
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Installera npm-beroenden
-        run: npm ci
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
 
-      - name: Installera Playwright-webbläsare
-        run: npx playwright install --with-deps chromium
+      - name: Starta mysql + backend + frontend
+        run: docker compose -f docker-compose.ci.yml up -d --build --wait
 
-      - name: Skapa nätverk och starta MySQL
-        run: |
-          docker network create e2e-net
-          docker run -d --name mysql --network e2e-net \
-            -e MYSQL_ROOT_PASSWORD=password \
-            -e MYSQL_DATABASE=numberguess \
-            mysql:8.0
-
-          echo "Väntar på att MySQL blir redo..."
-          for i in {1..30}; do
-            if docker exec mysql mysqladmin ping -h localhost -uroot -ppassword --silent 2>/dev/null; then
-              echo "MySQL är redo"
-              exit 0
-            fi
-            echo "försök $i..."
-            sleep 2
-          done
-          echo "MySQL svarade aldrig"
-          docker logs mysql
-          exit 1
-
-      - name: Starta backend (från Docker Hub, samma image som deployas)
-        run: |
-          docker run -d --name backend --network e2e-net \
-            -e DB_URL="jdbc:mysql://mysql:3306/numberguess?serverTimezone=UTC" \
-            -e DB_USERNAME=root \
-            -e DB_PASSWORD=password \
-            -e FRONTEND_ORIGIN=http://localhost:8081 \
-            -e PORT=8080 \
-            -p 8080:8080 \
-            "${{ secrets.DOCKERHUB_USERNAME }}/number-guess-backend:${{ env.BACKEND_TAG }}"
-
-      - name: Starta frontend (byggd från detta repo)
-        run: |
-          docker build -t number-guess-frontend:e2e .
-          docker run -d --name frontend --network e2e-net \
-            -e PORT=8081 \
-            -e API_BASE_URL=http://localhost:8080 \
-            -p 8081:8081 \
-            number-guess-frontend:e2e
-
-      - name: Väck/vänta på backend
+      - name: Vänta tills backend svarar
         run: |
           for i in {1..20}; do
             status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/players \
-              -H "Content-Type: application/json" -d '{"username":"ci-healthcheck"}')
-            if [ "$status" = "200" ]; then
-              echo "Backend är uppe (HTTP $status)"
-              exit 0
-            fi
+              -H "Content-Type: application/json" -d '{"username":"ci-healthcheck"}') || status="000"
+            [ "$status" = "200" ] && exit 0
             echo "försök $i, status=$status"
             sleep 3
           done
-          echo "Backend svarade aldrig korrekt"
-          docker logs backend
-          exit 1
-
-      - name: Vänta på frontend
-        run: |
-          for i in {1..10}; do
-            if curl -sf http://localhost:8081/ > /dev/null; then
-              echo "Frontend är uppe"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Frontend svarade aldrig"
-          docker logs frontend
+          docker compose -f docker-compose.ci.yml logs backend
           exit 1
 
       - name: Kör Playwright E2E-tester
@@ -139,6 +73,4 @@ jobs:
 
       - name: Riv ner miljön
         if: always()
-        run: |
-          docker rm -f mysql backend frontend 2>/dev/null || true
-          docker network rm e2e-net 2>/dev/null || true
+        run: docker compose -f docker-compose.ci.yml down -v

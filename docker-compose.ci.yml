@@ -1,0 +1,40 @@
+# Används endast av GitHub Actions (test.yml) för att köra E2E-testerna
+# mot en riktig, isolerad miljö. Backend hämtas som färdig image från
+# Docker Hub (samma image som faktiskt deployas); frontend byggs från
+# detta repo.
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: numberguess
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-ppassword"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    image: ${DOCKERHUB_USERNAME}/number-guess-backend:${BACKEND_TAG}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/numberguess?serverTimezone=UTC
+      DB_USERNAME: root
+      DB_PASSWORD: password
+      FRONTEND_ORIGIN: http://localhost:8081
+      PORT: 8080
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: .
+    depends_on:
+      - backend
+    environment:
+      PORT: 8081
+      API_BASE_URL: http://localhost:8080
+    ports:
+      - "8081:8081"
