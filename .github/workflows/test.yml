@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      BACKEND_TAG: ${{ github.ref_name == 'main' && 'main' || 'dev' }}
+      BACKEND_TAG: dev
     steps:
       - uses: actions/checkout@v7
 
