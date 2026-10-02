@@ -3,7 +3,6 @@
 .DS_Store
 *.log
 .env
-*.md
 pdf/
 # Playwright / node
 node_modules/

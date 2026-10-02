@@ -1,7 +1,7 @@
 .git/
 .gitignore
 Dockerfile
-*.md
+
 e2e/
 node_modules/
 target/
